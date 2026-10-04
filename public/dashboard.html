@@ -6,6 +6,15 @@
   <title>Dashboard Tổng Kết - Quản Trị Viên</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .table-custom th, .table-custom td {
+      vertical-align: middle;
+      text-align: center;
+    }
+    .text-left-content {
+      text-align: left !important;
+    }
+  </style>
 </head>
 <body class="bg-light">
   <div class="container-fluid py-4">
@@ -20,47 +29,71 @@
       </div>
     </div>
 
+    <!-- Khối đăng nhập Admin -->
     <div id="authCard" class="card shadow-sm mb-4" style="max-width: 400px;">
       <div class="card-body">
         <h5 class="card-title">Xác thực Admin</h5>
-        <div class="mb-3"><input type="password" class="form-control" id="dashboardPassword" placeholder="Nhập mật khẩu Admin"></div>
+        <div class="mb-3">
+          <input type="password" class="form-control" id="dashboardPassword" placeholder="Nhập mật khẩu Admin">
+        </div>
         <button class="btn btn-danger w-100" onclick="loadDashboardData()">Đăng nhập & Tải dữ liệu</button>
       </div>
     </div>
 
     <div id="mainContent" style="display: none;">
-      <!-- Chờ duyệt -->
+      <!-- Danh sách TNV Chờ duyệt -->
       <div class="card shadow-sm mb-4 border-warning">
         <div class="card-header bg-warning text-dark fw-bold">
           ⏳ Danh sách Tình nguyện viên đang chờ phê duyệt (<span id="pendingCount">0</span>)
         </div>
         <div class="card-body table-responsive">
-          <table class="table table-bordered align-middle mb-0">
+          <table class="table table-bordered align-middle mb-0 text-center">
             <thead class="table-light">
-              <tr><th>Họ và tên</th><th>MSSV</th><th>Thời gian đăng ký</th><th>Thao tác</th></tr>
+              <tr>
+                <th>Họ và tên</th>
+                <th>MSSV</th>
+                <th>Thời gian đăng ký</th>
+                <th>Thao tác</th>
+              </tr>
             </thead>
             <tbody id="pendingTableBody"></tbody>
           </table>
         </div>
       </div>
 
-      <!-- Bảng tổng kết -->
+      <!-- BẢNG TỔNG KẾT CHÍNH (Đã chia cột nhỏ theo yêu cầu) -->
       <div class="card shadow-sm border-danger">
         <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
           <span>📊 Bảng Tổng Kết Toàn Bộ Tình Nguyện Viên</span>
           <input type="text" id="searchInput" class="form-control form-control-sm w-25" placeholder="Tìm kiếm Tên hoặc MSSV..." onkeyup="filterTable()">
         </div>
         <div class="card-body table-responsive">
-          <table class="table table-bordered table-hover align-middle mb-0" id="summaryTable">
-            <thead class="table-dark text-center">
+          <table class="table table-bordered table-hover align-middle mb-0 table-custom" id="summaryTable">
+            <thead class="table-dark">
+              <!-- Hàng Tiêu Đề 1: Nhóm Cột -->
               <tr>
-                <th>STT</th>
-                <th>Họ và tên</th>
-                <th>MSSV</th>
-                <th>1. Tình nguyện (Đã lọc & Tổng số buổi)</th>
-                <th>2. Vi phạm kỷ luật (Tổng số lỗi)</th>
-                <th>3. Chiến dịch lớn (Thành tích / Tổng số)</th>
-                <th>4. Ghi chú chung</th>
+                <th rowspan="2" style="width: 50px;">STT</th>
+                <th rowspan="2" style="min-width: 150px;">Tên TNV</th>
+                <th rowspan="2" style="min-width: 110px;">MSSV</th>
+                <th colspan="3" class="bg-primary text-white">Thành tích hỗ trợ</th>
+                <th colspan="3" class="bg-warning text-dark">Vi phạm kỷ luật</th>
+                <th colspan="3" class="bg-info text-dark">Chiến dịch lớn</th>
+                <th rowspan="2" style="min-width: 150px;">Ghi chú chung</th>
+              </tr>
+              <!-- Hàng Tiêu Đề 2: Các Cột Nhỏ -->
+              <tr>
+                <!-- Thành tích hỗ trợ -->
+                <th class="bg-primary text-white" style="min-width: 180px;">Nội dung công việc</th>
+                <th class="bg-primary text-white" style="min-width: 110px;">Ngày</th>
+                <th class="bg-primary text-white" style="min-width: 110px;">Tổng số buổi</th>
+                <!-- Vi phạm kỷ luật -->
+                <th class="bg-warning text-dark" style="min-width: 160px;">Lỗi vi phạm</th>
+                <th class="bg-warning text-dark" style="min-width: 110px;">Ngày</th>
+                <th class="bg-warning text-dark" style="min-width: 110px;">Tổng số lỗi</th>
+                <!-- Chiến dịch lớn -->
+                <th class="bg-info text-dark" style="min-width: 160px;">Tên chiến dịch</th>
+                <th class="bg-info text-dark" style="min-width: 160px;">Thành tích nổi bật</th>
+                <th class="bg-info text-dark" style="min-width: 120px;">Tổng số chiến dịch</th>
               </tr>
             </thead>
             <tbody id="summaryTableBody"></tbody>
@@ -92,10 +125,11 @@
       const pendingList = data.filter(v => v.status === 'pending');
       const approvedList = data.filter(v => v.status === 'approved');
 
+      // Render danh sách chờ duyệt
       document.getElementById('pendingCount').textContent = pendingList.length;
       document.getElementById('pendingTableBody').innerHTML = pendingList.length ? pendingList.map(v => `
         <tr>
-          <td>${v.fullName}</td>
+          <td class="fw-bold">${v.fullName}</td>
           <td>${v.mssv}</td>
           <td>${new Date(v.createdAt).toLocaleString('vi-VN')}</td>
           <td>
@@ -105,41 +139,63 @@
         </tr>
       `).join('') : `<tr><td colspan="4" class="text-center text-muted">Không có hồ sơ chờ duyệt</td></tr>`;
 
+      // Render Bảng Tổng Kết (Các Cột Nhỏ)
       document.getElementById('summaryTableBody').innerHTML = approvedList.length ? approvedList.map((v, index) => {
-        let actHtml = `<ul class="mb-0 ps-3">`;
+        // 1. Xử lý Thành tích hỗ trợ
+        let actContents = [];
+        let actDates = [];
         let totalSessions = 0;
+
         v.activitySummary.forEach(group => {
           totalSessions += group.count;
-          actHtml += `<li><strong>${group.groupName}</strong>: ${group.count} buổi 
-            <ul class="text-muted small">${group.items.map(i => `<li>${i.date} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'activity', '${i._id}')">[xóa]</button></li>`).join('')}</ul>
-          </li>`;
+          group.items.forEach(item => {
+            actContents.push(`• ${item.content} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'activity', '${item._id}')">[xóa]</button>`);
+            actDates.push(item.date);
+          });
         });
-        actHtml += `</ul><span class="badge bg-success mt-1">Tổng số buổi: ${totalSessions}</span>`;
 
-        let faultHtml = `<ul class="mb-0 ps-3">`;
+        // 2. Xử lý Vi phạm kỷ luật
+        let faultNames = [];
+        let faultDates = [];
         v.faults.forEach(f => {
-          faultHtml += `<li><span class="text-danger">${f.fault}</span> (${f.date}) <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'fault', '${f._id}')">[xóa]</button></li>`;
+          faultNames.push(`• ${f.fault} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'fault', '${f._id}')">[xóa]</button>`);
+          faultDates.push(f.date);
         });
-        faultHtml += `</ul><span class="badge bg-danger mt-1">Tổng số lỗi: ${v.faults.length}</span>`;
 
-        let campHtml = `<ul class="mb-0 ps-3">`;
+        // 3. Xử lý Chiến dịch lớn
+        let campaignNames = [];
+        let campaignAchievements = [];
         v.campaigns.forEach(c => {
-          campHtml += `<li><strong>${c.campaignName}</strong>: ${c.achievement || 'Chưa có'} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'campaign', '${c._id}')">[xóa]</button></li>`;
+          campaignNames.push(`• ${c.campaignName} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'campaign', '${c._id}')">[xóa]</button>`);
+          campaignAchievements.push(c.achievement || 'Chưa ghi nhận');
         });
-        campHtml += `</ul><span class="badge bg-info text-dark mt-1">Tổng chiến dịch: ${v.campaigns.length}</span>`;
 
         return `
           <tr>
-            <td class="text-center">${index + 1}</td>
-            <td class="fw-bold">${v.fullName}</td>
-            <td>${v.mssv}</td>
-            <td>${actHtml}</td>
-            <td>${faultHtml}</td>
-            <td>${campHtml}</td>
-            <td>${v.generalNote || '-'}</td>
+            <td>${index + 1}</td>
+            <td class="fw-bold text-primary text-left-content">${v.fullName}</td>
+            <td class="fw-bold">${v.mssv}</td>
+            
+            <!-- Thành tích hỗ trợ -->
+            <td class="text-left-content">${actContents.length ? actContents.join('<br>') : '-'}</td>
+            <td>${actDates.length ? actDates.join('<br>') : '-'}</td>
+            <td><span class="badge bg-primary fs-6">${totalSessions}</span></td>
+
+            <!-- Vi phạm kỷ luật -->
+            <td class="text-left-content text-danger">${faultNames.length ? faultNames.join('<br>') : '-'}</td>
+            <td>${faultDates.length ? faultDates.join('<br>') : '-'}</td>
+            <td><span class="badge bg-danger fs-6">${v.faults.length}</span></td>
+
+            <!-- Chiến dịch lớn -->
+            <td class="text-left-content text-info font-weight-bold">${campaignNames.length ? campaignNames.join('<br>') : '-'}</td>
+            <td class="text-left-content">${campaignAchievements.length ? campaignAchievements.join('<br>') : '-'}</td>
+            <td><span class="badge bg-info text-dark fs-6">${v.campaigns.length}</span></td>
+
+            <!-- Ghi chú chung -->
+            <td class="text-left-content">${v.generalNote || '-'}</td>
           </tr>
         `;
-      }).join('') : `<tr><td colspan="7" class="text-center text-muted">Chưa có tình nguyện viên nào được duyệt</td></tr>`;
+      }).join('') : `<tr><td colspan="13" class="text-center text-muted">Chưa có tình nguyện viên nào được duyệt</td></tr>`;
     }
 
     async function handleApprove(id, action) {
