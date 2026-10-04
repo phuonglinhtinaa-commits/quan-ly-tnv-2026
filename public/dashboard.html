@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Tổng Kết - Quản Trị Viên</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-light">
+  <div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <a href="index.html" class="btn btn-sm btn-secondary mb-2">&larr; Quay lại Trang chủ</a>
+        <h2><i class="fa-solid fa-gauge-high me-2 text-danger"></i>Dashboard Tổng Kết Tình Nguyện Viên 2026.1</h2>
+      </div>
+      <div>
+        <button class="btn btn-success me-2" onclick="exportToExcel()"><i class="fa-solid fa-file-excel me-1"></i> Xuất file Excel</button>
+        <button class="btn btn-primary" onclick="loadDashboardData()"><i class="fa-solid fa-sync me-1"></i> Đồng bộ từ DB</button>
+      </div>
+    </div>
+
+    <div id="authCard" class="card shadow-sm mb-4" style="max-width: 400px;">
+      <div class="card-body">
+        <h5 class="card-title">Xác thực Admin</h5>
+        <div class="mb-3"><input type="password" class="form-control" id="dashboardPassword" placeholder="Nhập mật khẩu Admin"></div>
+        <button class="btn btn-danger w-100" onclick="loadDashboardData()">Đăng nhập & Tải dữ liệu</button>
+      </div>
+    </div>
+
+    <div id="mainContent" style="display: none;">
+      <!-- Chờ duyệt -->
+      <div class="card shadow-sm mb-4 border-warning">
+        <div class="card-header bg-warning text-dark fw-bold">
+          ⏳ Danh sách Tình nguyện viên đang chờ phê duyệt (<span id="pendingCount">0</span>)
+        </div>
+        <div class="card-body table-responsive">
+          <table class="table table-bordered align-middle mb-0">
+            <thead class="table-light">
+              <tr><th>Họ và tên</th><th>MSSV</th><th>Thời gian đăng ký</th><th>Thao tác</th></tr>
+            </thead>
+            <tbody id="pendingTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Bảng tổng kết -->
+      <div class="card shadow-sm border-danger">
+        <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
+          <span>📊 Bảng Tổng Kết Toàn Bộ Tình Nguyện Viên</span>
+          <input type="text" id="searchInput" class="form-control form-control-sm w-25" placeholder="Tìm kiếm Tên hoặc MSSV..." onkeyup="filterTable()">
+        </div>
+        <div class="card-body table-responsive">
+          <table class="table table-bordered table-hover align-middle mb-0" id="summaryTable">
+            <thead class="table-dark text-center">
+              <tr>
+                <th>STT</th>
+                <th>Họ và tên</th>
+                <th>MSSV</th>
+                <th>1. Tình nguyện (Đã lọc & Tổng số buổi)</th>
+                <th>2. Vi phạm kỷ luật (Tổng số lỗi)</th>
+                <th>3. Chiến dịch lớn (Thành tích / Tổng số)</th>
+                <th>4. Ghi chú chung</th>
+              </tr>
+            </thead>
+            <tbody id="summaryTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let cachedData = [];
+
+    async function loadDashboardData() {
+      const password = document.getElementById('dashboardPassword').value;
+      const res = await fetch('/api/admin/volunteers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': password }
+      });
+      const result = await res.json();
+      if (!result.success) { alert(result.message); return; }
+
+      document.getElementById('authCard').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      cachedData = result.data;
+      renderDashboard(cachedData);
+    }
+
+    function renderDashboard(data) {
+      const pendingList = data.filter(v => v.status === 'pending');
+      const approvedList = data.filter(v => v.status === 'approved');
+
+      document.getElementById('pendingCount').textContent = pendingList.length;
+      document.getElementById('pendingTableBody').innerHTML = pendingList.length ? pendingList.map(v => `
+        <tr>
+          <td>${v.fullName}</td>
+          <td>${v.mssv}</td>
+          <td>${new Date(v.createdAt).toLocaleString('vi-VN')}</td>
+          <td>
+            <button class="btn btn-sm btn-success me-1" onclick="handleApprove('${v._id}', 'approve')">Phê duyệt</button>
+            <button class="btn btn-sm btn-danger" onclick="handleApprove('${v._id}', 'reject')">Từ chối</button>
+          </td>
+        </tr>
+      `).join('') : `<tr><td colspan="4" class="text-center text-muted">Không có hồ sơ chờ duyệt</td></tr>`;
+
+      document.getElementById('summaryTableBody').innerHTML = approvedList.length ? approvedList.map((v, index) => {
+        let actHtml = `<ul class="mb-0 ps-3">`;
+        let totalSessions = 0;
+        v.activitySummary.forEach(group => {
+          totalSessions += group.count;
+          actHtml += `<li><strong>${group.groupName}</strong>: ${group.count} buổi 
+            <ul class="text-muted small">${group.items.map(i => `<li>${i.date} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'activity', '${i._id}')">[xóa]</button></li>`).join('')}</ul>
+          </li>`;
+        });
+        actHtml += `</ul><span class="badge bg-success mt-1">Tổng số buổi: ${totalSessions}</span>`;
+
+        let faultHtml = `<ul class="mb-0 ps-3">`;
+        v.faults.forEach(f => {
+          faultHtml += `<li><span class="text-danger">${f.fault}</span> (${f.date}) <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'fault', '${f._id}')">[xóa]</button></li>`;
+        });
+        faultHtml += `</ul><span class="badge bg-danger mt-1">Tổng số lỗi: ${v.faults.length}</span>`;
+
+        let campHtml = `<ul class="mb-0 ps-3">`;
+        v.campaigns.forEach(c => {
+          campHtml += `<li><strong>${c.campaignName}</strong>: ${c.achievement || 'Chưa có'} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'campaign', '${c._id}')">[xóa]</button></li>`;
+        });
+        campHtml += `</ul><span class="badge bg-info text-dark mt-1">Tổng chiến dịch: ${v.campaigns.length}</span>`;
+
+        return `
+          <tr>
+            <td class="text-center">${index + 1}</td>
+            <td class="fw-bold">${v.fullName}</td>
+            <td>${v.mssv}</td>
+            <td>${actHtml}</td>
+            <td>${faultHtml}</td>
+            <td>${campHtml}</td>
+            <td>${v.generalNote || '-'}</td>
+          </tr>
+        `;
+      }).join('') : `<tr><td colspan="7" class="text-center text-muted">Chưa có tình nguyện viên nào được duyệt</td></tr>`;
+    }
+
+    async function handleApprove(id, action) {
+      const password = document.getElementById('dashboardPassword').value;
+      const res = await fetch('/api/admin/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ id, action })
+      });
+      const data = await res.json();
+      if (data.success) loadDashboardData();
+      else alert(data.message);
+    }
+
+    async function deleteItem(volunteerId, itemType, itemId) {
+      if (!confirm('Bạn có chắc muốn xóa mục này?')) return;
+      const password = document.getElementById('dashboardPassword').value;
+      const res = await fetch('/api/admin/delete-item', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+        body: JSON.stringify({ volunteerId, itemType, itemId })
+      });
+      const data = await res.json();
+      if (data.success) loadDashboardData();
+      else alert(data.message);
+    }
+
+    function filterTable() {
+      const keyword = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = cachedData.filter(v => v.fullName.toLowerCase().includes(keyword) || v.mssv.toLowerCase().includes(keyword));
+      renderDashboard(filtered);
+    }
+
+    function exportToExcel() {
+      let tableHtml = document.getElementById('summaryTable').outerHTML;
+      let blob = new Blob(['\ufeff' + tableHtml], { type: 'application/vnd.ms-excel' });
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement('a');
+      a.href = url;
+      a.download = 'Bang_Tong_Ket_Tinh_Nguyen_2026_1.xls';
+      a.click();
+    }
+  </script>
+</body>
+</html>
