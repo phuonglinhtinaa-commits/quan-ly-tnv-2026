@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Khởi tạo & Ghi nhận Tình nguyện</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <div class="container py-5" style="max-width: 600px;">
+    <a href="index.html" class="btn btn-sm btn-secondary mb-4">&larr; Quay lại Trang chủ</a>
+    
+    <!-- Form 1 -->
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-primary text-white"><h5 class="mb-0">Form 1: Khởi tạo Tình nguyện viên mới</h5></div>
+      <div class="card-body">
+        <form id="registerForm">
+          <div class="mb-3"><label class="form-label">Họ và tên</label><input type="text" class="form-control" id="regName" required placeholder="Nguyễn Văn A"></div>
+          <div class="mb-3"><label class="form-label">Mã số sinh viên (MSSV)</label><input type="text" class="form-control" id="regMssv" required placeholder="B22DCCN123"></div>
+          <button type="submit" class="btn btn-primary w-100">Gửi yêu cầu đăng ký</button>
+        </form>
+        <div id="regAlert" class="mt-3"></div>
+      </div>
+    </div>
+
+    <!-- Form 2 -->
+    <div class="card shadow-sm" id="activity">
+      <div class="card-header bg-success text-white"><h5 class="mb-0">Form 2: Ghi nhận Buổi Tình nguyện</h5></div>
+      <div class="card-body">
+        <form id="activityForm">
+          <div class="mb-3"><label class="form-label">Họ và tên</label><input type="text" class="form-control" id="actName" required placeholder="Nguyễn Văn A"></div>
+          <div class="mb-3"><label class="form-label">Mã số sinh viên (MSSV)</label><input type="text" class="form-control" id="actMssv" required placeholder="B22DCCN123"></div>
+          <div class="mb-3"><label class="form-label">Nội dung hoạt động</label><input type="text" class="form-control" id="actContent" required placeholder="Ví dụ: Trực bàn buổi 1, Đi lao động..."></div>
+          <div class="mb-3"><label class="form-label">Ngày thực hiện</label><input type="date" class="form-control" id="actDate" required></div>
+          <button type="submit" class="btn btn-success w-100">Ghi nhận hoạt động</button>
+        </form>
+        <div id="actAlert" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('actDate').valueAsDate = new Date();
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/volunteers/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: document.getElementById('regName').value, mssv: document.getElementById('regMssv').value })
+      });
+      const data = await res.json();
+      const alertDiv = document.getElementById('regAlert');
+      alertDiv.className = `alert alert-${data.success ? 'success' : 'danger'}`;
+      alertDiv.textContent = data.message;
+    });
+
+    document.getElementById('activityForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/volunteers/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: document.getElementById('actName').value,
+          mssv: document.getElementById('actMssv').value,
+          content: document.getElementById('actContent').value,
+          date: document.getElementById('actDate').value
+        })
+      });
+      const data = await res.json();
+      const alertDiv = document.getElementById('actAlert');
+      alertDiv.className = `alert alert-${data.success ? 'success' : 'danger'}`;
+      alertDiv.textContent = data.message;
+    });
+  </script>
+</body>
+</html>
