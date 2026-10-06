@@ -229,7 +229,7 @@ app.post('/api/admin/volunteers', verifyAdmin, async (req, res) => {
     const processed = list.map(v => {
       let obj = v.toObject();
       const groupMap = {};
-      obj.activities.forEach(act => {
+      (obj.activities || []).forEach(act => {
         const key = normalizeActivityContent(act.content);
         if (!groupMap[key]) groupMap[key] = { groupName: act.content, count: 0, items: [] };
         groupMap[key].count += 1;
@@ -259,7 +259,7 @@ app.post('/api/admin/approve', verifyAdmin, async (req, res) => {
   }
 });
 
-// Xóa lẻ mục (hoạt động, lỗi, chiến dịch, GHI CHÚ)
+// Xóa lẻ mục (hoạt động, lỗi, chiến dịch, GHI CHÚ BULLET, GHI CHÚ ĐƠN CŨ)
 app.post('/api/admin/delete-item', verifyAdmin, async (req, res) => {
   try {
     const { volunteerId, itemType, itemId } = req.body;
@@ -268,6 +268,7 @@ app.post('/api/admin/delete-item', verifyAdmin, async (req, res) => {
     if (itemType === 'fault') updateQuery = { $pull: { faults: { _id: itemId } } };
     if (itemType === 'campaign') updateQuery = { $pull: { campaigns: { _id: itemId } } };
     if (itemType === 'note') updateQuery = { $pull: { notes: { _id: itemId } } };
+    if (itemType === 'generalNote') updateQuery = { $set: { generalNote: '' } }; // Thêm dòng này để xóa được ghi chú chuỗi cũ
 
     await Volunteer.findByIdAndUpdate(volunteerId, updateQuery);
     res.json({ success: true, message: 'Đã xóa mục thành công!' });
