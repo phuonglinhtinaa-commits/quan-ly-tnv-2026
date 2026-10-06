@@ -17,6 +17,10 @@ const volunteerSchema = new mongoose.Schema({
     campaignName: { type: String, required: true },
     achievement: { type: String, default: '' }
   }],
+  notes: [{
+    text: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+  }],
   generalNote: { type: String, default: '' }
 }, { timestamps: true });
 
