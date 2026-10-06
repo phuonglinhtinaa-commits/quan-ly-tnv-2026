@@ -39,6 +39,23 @@ const normalizeActivityContent = (text) => {
 
 // --- API PUBLIC ---
 
+// API gợi ý/đề xuất tên TNV khi gõ (Form 3 & Form khác)
+app.get('/api/volunteers/search-names', async (req, res) => {
+  try {
+    const { term } = req.query;
+    if (!term || term.trim().length === 0) return res.json({ success: true, data: [] });
+
+    const list = await Volunteer.find({
+      fullName: { $regex: term.trim(), $options: 'i' },
+      status: 'approved'
+    }).select('fullName mssv').limit(10);
+
+    res.json({ success: true, data: list });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Form 1: Khởi tạo TNV
 app.post('/api/volunteers/register', async (req, res) => {
   try {
@@ -86,12 +103,38 @@ app.post('/api/volunteers/activity', async (req, res) => {
   }
 });
 
-// Form 3: Admin cập nhật Vi phạm / Ghi chú / Thành tích
+// Form 3: Admin cập nhật Vi phạm / Ghi chú / Thành tích (Tên trùng thông minh)
 app.post('/api/volunteers/admin-update', verifyAdmin, async (req, res) => {
   try {
     const { mssv, fullName, updateType, valueData } = req.body;
-    const query = { mssv: mssv.trim().toUpperCase() };
-    if (fullName) query.fullName = { $regex: new RegExp(`^${fullName.trim()}$`, 'i') };
+    let query = { status: 'approved' };
+
+    if (!fullName && !mssv) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập Họ tên hoặc MSSV!' });
+    }
+
+    // Nếu nhập MSSV -> Ưu tiên tìm theo MSSV
+    if (mssv && mssv.trim()) {
+      query.mssv = mssv.trim().toUpperCase();
+    } else if (fullName && fullName.trim()) {
+      // Tìm danh sách theo tên
+      const matches = await Volunteer.find({
+        fullName: { $regex: new RegExp(`^${fullName.trim()}$`, 'i') },
+        status: 'approved'
+      });
+
+      if (matches.length === 0) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy TNV phù hợp!' });
+      }
+      if (matches.length > 1) {
+        return res.status(400).json({ 
+          success: false, 
+          requireMssv: true,
+          message: `Phát hiện ${matches.length} sinh viên trùng tên "${fullName}". Vui lòng nhập thêm MSSV để xác định chính xác!` 
+        });
+      }
+      query._id = matches[0]._id;
+    }
 
     const volunteer = await Volunteer.findOne(query);
     if (!volunteer) {
@@ -101,7 +144,9 @@ app.post('/api/volunteers/admin-update', verifyAdmin, async (req, res) => {
     if (updateType === 'fault') {
       volunteer.faults.push({ fault: valueData.fault, date: valueData.date });
     } else if (updateType === 'note') {
-      volunteer.generalNote = valueData.generalNote;
+      // Lưu ghi chú theo mảng bullet point
+      if (typeof volunteer.notes === 'undefined') volunteer.notes = [];
+      volunteer.notes.push({ text: valueData.generalNote.trim(), createdAt: new Date() });
     } else if (updateType === 'achievement') {
       const campaign = volunteer.campaigns.find(c => c.campaignName.toLowerCase() === valueData.campaignName.toLowerCase());
       if (campaign) {
@@ -196,6 +241,7 @@ app.post('/api/admin/approve', verifyAdmin, async (req, res) => {
   }
 });
 
+// Xóa lẻ mục (hoạt động, lỗi, chiến dịch, GHI CHÚ)
 app.post('/api/admin/delete-item', verifyAdmin, async (req, res) => {
   try {
     const { volunteerId, itemType, itemId } = req.body;
@@ -203,6 +249,7 @@ app.post('/api/admin/delete-item', verifyAdmin, async (req, res) => {
     if (itemType === 'activity') updateQuery = { $pull: { activities: { _id: itemId } } };
     if (itemType === 'fault') updateQuery = { $pull: { faults: { _id: itemId } } };
     if (itemType === 'campaign') updateQuery = { $pull: { campaigns: { _id: itemId } } };
+    if (itemType === 'note') updateQuery = { $pull: { notes: { _id: itemId } } };
 
     await Volunteer.findByIdAndUpdate(volunteerId, updateQuery);
     res.json({ success: true, message: 'Đã xóa mục thành công!' });
