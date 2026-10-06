@@ -46,7 +46,7 @@ app.get('/api/volunteers/search-names', async (req, res) => {
     if (!term || term.trim().length === 0) return res.json({ success: true, data: [] });
 
     const list = await Volunteer.find({
-      fullName: { $regex: term.trim(), $options: 'i' },
+      fullName: { $regex: term.trim(),$options: 'i' },
       status: 'approved'
     }).select('fullName mssv').limit(10);
 
@@ -83,21 +83,39 @@ app.post('/api/volunteers/register', async (req, res) => {
   }
 });
 
-// Form 2: Ghi nhận tình nguyện
+// Form 2: Ghi nhận hoặc Sửa tên buổi tình nguyện (Mỗi ngày tự ghi nhận tối đa 1 buổi)
 app.post('/api/volunteers/activity', async (req, res) => {
   try {
     const { fullName, mssv, content, date } = req.body;
+    
+    // Tìm sinh viên đã được phê duyệt
     const volunteer = await Volunteer.findOne({ 
       mssv: mssv.trim().toUpperCase(), 
       fullName: { $regex: new RegExp(`^${fullName.trim()}$`, 'i') },
       status: 'approved'
     });
+    
     if (!volunteer) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy TNV hoặc tài khoản chưa được phê duyệt!' });
     }
-    volunteer.activities.push({ content: content.trim(), date });
-    await volunteer.save();
-    res.json({ success: true, message: 'Ghi nhận buổi tình nguyện thành công!' });
+
+    // Kiểm tra xem trong ngày này TNV đã từng ghi nhận buổi nào chưa
+    const existingActivityIndex = volunteer.activities.findIndex(act => act.date === date);
+
+    if (existingActivityIndex !== -1) {
+      // Nếu đã có buổi trong ngày này -> Tiến hành sửa/cập nhật nội dung buổi đó
+      volunteer.activities[existingActivityIndex].content = content.trim();
+      await volunteer.save();
+      return res.json({ 
+        success: true, 
+        message: 'Bạn đã có ghi nhận trong ngày này! Hệ thống đã tự động cập nhật/sửa lại tên buổi tình nguyện cho bạn.' 
+      });
+    } else {
+      // Nếu chưa có buổi nào trong ngày -> Thêm buổi mới
+      volunteer.activities.push({ content: content.trim(), date });
+      await volunteer.save();
+      return res.json({ success: true, message: 'Ghi nhận buổi tình nguyện thành công!' });
+    }
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
