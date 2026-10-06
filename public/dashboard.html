@@ -29,7 +29,7 @@
       </div>
     </div>
 
-    <!-- Khối đăng nhập Admin -->
+    <!-- Đăng nhập Admin -->
     <div id="authCard" class="card shadow-sm mb-4" style="max-width: 400px;">
       <div class="card-body">
         <h5 class="card-title">Xác thực Admin</h5>
@@ -41,7 +41,7 @@
     </div>
 
     <div id="mainContent" style="display: none;">
-      <!-- Danh sách TNV Chờ duyệt -->
+      <!-- Danh sách Chờ duyệt -->
       <div class="card shadow-sm mb-4 border-warning">
         <div class="card-header bg-warning text-dark fw-bold">
           ⏳ Danh sách Tình nguyện viên đang chờ phê duyệt (<span id="pendingCount">0</span>)
@@ -61,16 +61,33 @@
         </div>
       </div>
 
-      <!-- BẢNG TỔNG KẾT CHÍNH (Đã chia cột nhỏ theo yêu cầu) -->
+      <!-- BẢNG TỔNG KẾT VÀ BỘ LỌC NÂNG CAO -->
       <div class="card shadow-sm border-danger">
-        <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
-          <span>📊 Bảng Tổng Kết Toàn Bộ Tình Nguyện Viên</span>
-          <input type="text" id="searchInput" class="form-control form-control-sm w-25" placeholder="Tìm kiếm Tên hoặc MSSV..." onkeyup="filterTable()">
+        <div class="card-header bg-danger text-white fw-bold">
+          <div class="row align-items-center g-2">
+            <div class="col-md-3">
+              <span>📊 Bảng Tổng Kết Tình Nguyện Viên</span>
+            </div>
+            <!-- BỘ LỌC THÔNG MINH -->
+            <div class="col-md-9">
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Tìm Tên hoặc MSSV..." onkeyup="filterTable()">
+                </div>
+                <div class="col-md-8 d-flex gap-2 flex-wrap justify-content-end">
+                  <button class="btn btn-sm btn-light text-dark" id="btnFilterSessions" onclick="toggleFilter('sessions')">⚡ Tình nguyện >= 4 buổi</button>
+                  <button class="btn btn-sm btn-light text-dark" id="btnFilterFaults" onclick="toggleFilter('faults')">⚠️ Vi phạm (1-10 lỗi)</button>
+                  <button class="btn btn-sm btn-light text-dark" id="btnFilterBan" onclick="toggleFilter('ban')">🚩 Thành viên Tham gia Ban</button>
+                  <button class="btn btn-sm btn-outline-light" onclick="resetFilters()">🔄 Bỏ lọc</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+        
         <div class="card-body table-responsive">
           <table class="table table-bordered table-hover align-middle mb-0 table-custom" id="summaryTable">
             <thead class="table-dark">
-              <!-- Hàng Tiêu Đề 1: Nhóm Cột -->
               <tr>
                 <th rowspan="2" style="width: 50px;">STT</th>
                 <th rowspan="2" style="min-width: 150px;">Tên TNV</th>
@@ -78,19 +95,15 @@
                 <th colspan="3" class="bg-primary text-white">Thành tích hỗ trợ</th>
                 <th colspan="3" class="bg-warning text-dark">Vi phạm kỷ luật</th>
                 <th colspan="3" class="bg-info text-dark">Chiến dịch lớn</th>
-                <th rowspan="2" style="min-width: 150px;">Ghi chú chung</th>
+                <th rowspan="2" style="min-width: 200px;">Ghi chú chung (Bullet Points)</th>
               </tr>
-              <!-- Hàng Tiêu Đề 2: Các Cột Nhỏ -->
               <tr>
-                <!-- Thành tích hỗ trợ -->
                 <th class="bg-primary text-white" style="min-width: 180px;">Nội dung công việc</th>
                 <th class="bg-primary text-white" style="min-width: 110px;">Ngày</th>
                 <th class="bg-primary text-white" style="min-width: 110px;">Tổng số buổi</th>
-                <!-- Vi phạm kỷ luật -->
                 <th class="bg-warning text-dark" style="min-width: 160px;">Lỗi vi phạm</th>
                 <th class="bg-warning text-dark" style="min-width: 110px;">Ngày</th>
                 <th class="bg-warning text-dark" style="min-width: 110px;">Tổng số lỗi</th>
-                <!-- Chiến dịch lớn -->
                 <th class="bg-info text-dark" style="min-width: 160px;">Tên chiến dịch</th>
                 <th class="bg-info text-dark" style="min-width: 160px;">Thành tích nổi bật</th>
                 <th class="bg-info text-dark" style="min-width: 120px;">Tổng số chiến dịch</th>
@@ -105,27 +118,118 @@
 
   <script>
     let cachedData = [];
+    let activeFilters = {
+      sessions: false,
+      faults: false,
+      ban: false
+    };
+
+    function getAdminPassword() {
+      let pass = sessionStorage.getItem('adminPass');
+      if (!pass) {
+        const inputPass = document.getElementById('dashboardPassword');
+        if (inputPass) pass = inputPass.value;
+      }
+      return pass;
+    }
 
     async function loadDashboardData() {
-      const password = document.getElementById('dashboardPassword').value;
-      const res = await fetch('/api/admin/volunteers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': password }
-      });
-      const result = await res.json();
-      if (!result.success) { alert(result.message); return; }
+      const password = getAdminPassword();
+      if (!password) { alert('Vui lòng nhập mật khẩu Admin!'); return; }
 
-      document.getElementById('authCard').style.display = 'none';
-      document.getElementById('mainContent').style.display = 'block';
-      cachedData = result.data;
-      renderDashboard(cachedData);
+      try {
+        const res = await fetch('/api/admin/volunteers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': password }
+        });
+        const result = await res.json();
+        
+        if (!result.success) { 
+          alert(result.message); 
+          sessionStorage.removeItem('adminPass');
+          document.getElementById('authCard').style.display = 'block';
+          return; 
+        }
+
+        sessionStorage.setItem('adminPass', password);
+        document.getElementById('authCard').style.display = 'none';
+        document.getElementById('mainContent').style.display = 'block';
+        
+        cachedData = result.data;
+        filterTable();
+      } catch (err) {
+        alert('Lỗi kết nối máy chủ: ' + err.message);
+      }
+    }
+
+    function toggleFilter(filterType) {
+      activeFilters[filterType] = !activeFilters[filterType];
+      
+      const btnMap = {
+        sessions: 'btnFilterSessions',
+        faults: 'btnFilterFaults',
+        ban: 'btnFilterBan'
+      };
+      
+      const btn = document.getElementById(btnMap[filterType]);
+      if (activeFilters[filterType]) {
+        btn.classList.remove('btn-light');
+        btn.classList.add('btn-warning', 'fw-bold');
+      } else {
+        btn.classList.remove('btn-warning', 'fw-bold');
+        btn.classList.add('btn-light');
+      }
+      
+      filterTable();
+    }
+
+    function resetFilters() {
+      activeFilters = { sessions: false, faults: false, ban: false };
+      ['btnFilterSessions', 'btnFilterFaults', 'btnFilterBan'].forEach(id => {
+        const btn = document.getElementById(id);
+        btn.classList.remove('btn-warning', 'fw-bold');
+        btn.classList.add('btn-light');
+      });
+      document.getElementById('searchInput').value = '';
+      filterTable();
+    }
+
+    function filterTable() {
+      const keyword = document.getElementById('searchInput').value.toLowerCase();
+      
+      const filtered = cachedData.filter(v => {
+        // Tìm theo tên hoặc mssv
+        const matchKey = v.fullName.toLowerCase().includes(keyword) || v.mssv.toLowerCase().includes(keyword);
+        if (!matchKey) return false;
+
+        // Tính tổng số buổi
+        let totalSessions = 0;
+        v.activitySummary.forEach(g => totalSessions += g.count);
+
+        // 1. Lọc số buổi >= 4
+        if (activeFilters.sessions && totalSessions < 4) return false;
+
+        // 2. Lọc vi phạm từ 1 - 10
+        const faultCount = v.faults ? v.faults.length : 0;
+        if (activeFilters.faults && (faultCount < 1 || faultCount > 10)) return false;
+
+        // 3. Lọc tham gia ban
+        if (activeFilters.ban) {
+          const notesText = (v.notes || []).map(n => n.text).join(' ') + ' ' + (v.generalNote || '');
+          const isBan = notesText.toLowerCase().includes('tham gia ban');
+          if (!isBan) return false;
+        }
+
+        return true;
+      });
+
+      renderDashboard(filtered);
     }
 
     function renderDashboard(data) {
-      const pendingList = data.filter(v => v.status === 'pending');
+      const pendingList = cachedData.filter(v => v.status === 'pending');
       const approvedList = data.filter(v => v.status === 'approved');
 
-      // Render danh sách chờ duyệt
       document.getElementById('pendingCount').textContent = pendingList.length;
       document.getElementById('pendingTableBody').innerHTML = pendingList.length ? pendingList.map(v => `
         <tr>
@@ -139,9 +243,7 @@
         </tr>
       `).join('') : `<tr><td colspan="4" class="text-center text-muted">Không có hồ sơ chờ duyệt</td></tr>`;
 
-      // Render Bảng Tổng Kết (Các Cột Nhỏ)
       document.getElementById('summaryTableBody').innerHTML = approvedList.length ? approvedList.map((v, index) => {
-        // 1. Xử lý Thành tích hỗ trợ
         let actContents = [];
         let actDates = [];
         let totalSessions = 0;
@@ -154,21 +256,30 @@
           });
         });
 
-        // 2. Xử lý Vi phạm kỷ luật
         let faultNames = [];
         let faultDates = [];
-        v.faults.forEach(f => {
+        (v.faults || []).forEach(f => {
           faultNames.push(`• ${f.fault} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'fault', '${f._id}')">[xóa]</button>`);
           faultDates.push(f.date);
         });
 
-        // 3. Xử lý Chiến dịch lớn
         let campaignNames = [];
         let campaignAchievements = [];
-        v.campaigns.forEach(c => {
+        (v.campaigns || []).forEach(c => {
           campaignNames.push(`• ${c.campaignName} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'campaign', '${c._id}')">[xóa]</button>`);
           campaignAchievements.push(c.achievement || 'Chưa ghi nhận');
         });
+
+        // Xử lý ghi chú danh sách Bullet Point + Nút xóa từng ghi chú
+        let noteBullets = [];
+        if (v.notes && v.notes.length > 0) {
+          v.notes.forEach(n => {
+            noteBullets.push(`• ${n.text} <button class="btn btn-link btn-sm p-0 text-danger" onclick="deleteItem('${v._id}', 'note', '${n._id}')">[xóa]</button>`);
+          });
+        }
+        if (v.generalNote && v.generalNote.trim()) {
+          noteBullets.push(`• ${v.generalNote}`);
+        }
 
         return `
           <tr>
@@ -176,30 +287,26 @@
             <td class="fw-bold text-primary text-left-content">${v.fullName}</td>
             <td class="fw-bold">${v.mssv}</td>
             
-            <!-- Thành tích hỗ trợ -->
             <td class="text-left-content">${actContents.length ? actContents.join('<br>') : '-'}</td>
             <td>${actDates.length ? actDates.join('<br>') : '-'}</td>
             <td><span class="badge bg-primary fs-6">${totalSessions}</span></td>
 
-            <!-- Vi phạm kỷ luật -->
             <td class="text-left-content text-danger">${faultNames.length ? faultNames.join('<br>') : '-'}</td>
             <td>${faultDates.length ? faultDates.join('<br>') : '-'}</td>
             <td><span class="badge bg-danger fs-6">${v.faults.length}</span></td>
 
-            <!-- Chiến dịch lớn -->
             <td class="text-left-content text-info font-weight-bold">${campaignNames.length ? campaignNames.join('<br>') : '-'}</td>
             <td class="text-left-content">${campaignAchievements.length ? campaignAchievements.join('<br>') : '-'}</td>
             <td><span class="badge bg-info text-dark fs-6">${v.campaigns.length}</span></td>
 
-            <!-- Ghi chú chung -->
-            <td class="text-left-content">${v.generalNote || '-'}</td>
+            <td class="text-left-content">${noteBullets.length ? noteBullets.join('<br>') : '-'}</td>
           </tr>
         `;
-      }).join('') : `<tr><td colspan="13" class="text-center text-muted">Chưa có tình nguyện viên nào được duyệt</td></tr>`;
+      }).join('') : `<tr><td colspan="13" class="text-center text-muted">Không tìm thấy tình nguyện viên phù hợp với bộ lọc</td></tr>`;
     }
 
     async function handleApprove(id, action) {
-      const password = document.getElementById('dashboardPassword').value;
+      const password = getAdminPassword();
       const res = await fetch('/api/admin/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
@@ -212,7 +319,7 @@
 
     async function deleteItem(volunteerId, itemType, itemId) {
       if (!confirm('Bạn có chắc muốn xóa mục này?')) return;
-      const password = document.getElementById('dashboardPassword').value;
+      const password = getAdminPassword();
       const res = await fetch('/api/admin/delete-item', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
@@ -221,12 +328,6 @@
       const data = await res.json();
       if (data.success) loadDashboardData();
       else alert(data.message);
-    }
-
-    function filterTable() {
-      const keyword = document.getElementById('searchInput').value.toLowerCase();
-      const filtered = cachedData.filter(v => v.fullName.toLowerCase().includes(keyword) || v.mssv.toLowerCase().includes(keyword));
-      renderDashboard(filtered);
     }
 
     function exportToExcel() {
