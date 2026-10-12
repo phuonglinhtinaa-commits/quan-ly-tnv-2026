@@ -25,6 +25,7 @@
       </div>
       <div>
         <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#attendanceModal" id="attendanceModalBtn" style="display:none;"><i class="fa-solid fa-clipboard-user me-1"></i> Điểm danh họp đội</button>
+        <button class="btn btn-secondary me-2" onclick="exportAllTeamExcel()"><i class="fa-solid fa-file-excel me-1"></i> Xuất Excel Toàn Đội</button>
         <button class="btn btn-success me-2" onclick="exportFinalExcel()"><i class="fa-solid fa-file-excel me-1"></i> Xuất Excel Danh sách Chốt</button>
         <button class="btn btn-primary" onclick="loadDashboardData()"><i class="fa-solid fa-sync me-1"></i> Đồng bộ từ DB</button>
       </div>
@@ -500,6 +501,25 @@
       else alert(data.message);
     }
 
+    // Xuất Excel TOÀN ĐỘI (In toàn bộ chi tiết y hệt bảng trên giao diện)
+    function exportAllTeamExcel() {
+      const tableElem = document.getElementById('summaryTable');
+      if (!tableElem) {
+        alert('Không tìm thấy bảng dữ liệu!');
+        return;
+      }
+      let cloneTable = tableElem.cloneNode(true);
+      let tableHtml = cloneTable.outerHTML;
+
+      let blob = new Blob(['\ufeff' + tableHtml], { type: 'application/vnd.ms-excel' });
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement('a');
+      a.href = url;
+      a.download = 'Bang_Tong_Ket_Chi_Tiet_Toan_Doi_2026_1.xls';
+      a.click();
+    }
+
+    // Xuất Excel danh sách CHỐT ĐẠT
     function exportFinalExcel() {
       const finalVolunteers = cachedData.filter(v => checkedVolunteerIds.has(v._id));
       if (finalVolunteers.length === 0) {
