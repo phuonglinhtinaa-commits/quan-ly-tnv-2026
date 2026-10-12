@@ -6,7 +6,18 @@ const Volunteer = require('./models/Volunteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+
+// Cấu hình 8 mật khẩu: 1 Admin chính và 7 mật khẩu cho 7 Leader tương ứng 7 Team
+const PASSWORDS = {
+  admin: process.env.ADMIN_PASSWORD || 'DHPT280116',
+  'Team 1': 'leader123q',
+  'Team 2': 'leader234w',
+  'Team 3': 'leader345e',
+  'Team 4': 'leader456r',
+  'Team 5': 'leader567t',
+  'Team 6': 'leader678y',
+  'Team 7': 'leader789u'
+};
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -17,14 +28,27 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Đã kết nối MongoDB Atlas thành công'))
   .catch(err => console.error('❌ Lỗi kết nối MongoDB:', err));
 
-// Middleware xác thực Admin
-const verifyAdmin = (req, res, next) => {
+// Middleware xác thực và phân quyền (Admin hoặc Leader)
+const verifyAuth = (req, res, next) => {
   const password = req.headers['x-admin-password'] || req.body.adminPassword;
-  if (password === ADMIN_PASSWORD) {
-    next();
-  } else {
-    res.status(401).json({ success: false, message: 'Sai mật khẩu quản trị viên!' });
+  if (!password) {
+    return res.status(401).json({ success: false, message: 'Chưa cung cấp mật khẩu đăng nhập!' });
   }
+
+  if (password === PASSWORDS.admin) {
+    req.userRole = 'admin';
+    return next();
+  }
+
+  for (let teamName in PASSWORDS) {
+    if (teamName !== 'admin' && PASSWORDS[teamName] === password) {
+      req.userRole = 'leader';
+      req.userTeam = teamName;
+      return next();
+    }
+  }
+
+  res.status(401).json({ success: false, message: 'Mật khẩu không hợp lệ!' });
 };
 
 // Chuẩn hóa nội dung tình nguyện
@@ -39,7 +63,7 @@ const normalizeActivityContent = (text) => {
 
 // --- API PUBLIC ---
 
-// API gợi ý/đề xuất tên TNV khi gõ (Form 3 & Form khác)
+// API gợi ý/đề xuất tên TNV khi gõ
 app.get('/api/volunteers/search-names', async (req, res) => {
   try {
     const { term } = req.query;
@@ -48,7 +72,7 @@ app.get('/api/volunteers/search-names', async (req, res) => {
     const list = await Volunteer.find({
       fullName: { $regex: term.trim(),$options: 'i' },
       status: 'approved'
-    }).select('fullName mssv').limit(10);
+    }).select('fullName mssv team').limit(10);
 
     res.json({ success: true, data: list });
   } catch (error) {
@@ -56,28 +80,31 @@ app.get('/api/volunteers/search-names', async (req, res) => {
   }
 });
 
-// Form 1: Khởi tạo TNV
+// Form 1: Khởi tạo TNV (Nếu đã có MSSV thì cập nhật lại Tên và Team, giữ nguyên dữ liệu cũ)
 app.post('/api/volunteers/register', async (req, res) => {
   try {
-    const { fullName, mssv } = req.body;
-    if (!fullName || !mssv) {
-      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ Họ tên và MSSV!' });
+    const { fullName, mssv, team } = req.body;
+    if (!fullName || !mssv || !team) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ Họ tên, MSSV và chọn Team!' });
     }
+
     let volunteer = await Volunteer.findOne({ mssv: mssv.trim().toUpperCase() });
     if (volunteer) {
-      if (volunteer.status === 'approved') {
-        return res.status(400).json({ success: false, message: 'MSSV này đã được đăng ký và phê duyệt trước đó!' });
-      } else {
-        return res.json({ success: true, message: 'Hồ sơ của bạn đang chờ phê duyệt!' });
-      }
+      // Ghi đè cập nhật lại tên và team, giữ nguyên các dữ liệu lịch sử cũ
+      volunteer.fullName = fullName.trim();
+      volunteer.team = team;
+      await volunteer.save();
+      return res.json({ success: true, message: 'Sinh viên đã có trong hệ thống! Đã cập nhật lại thông tin và Team thành công mà không làm mất dữ liệu cũ.' });
     }
+
     volunteer = new Volunteer({
       fullName: fullName.trim(),
       mssv: mssv.trim().toUpperCase(),
+      team: team,
       status: 'pending'
     });
     await volunteer.save();
-    res.json({ success: true, message: 'Đăng ký thành công! Đang chờ Quản trị viên phê duyệt.' });
+    res.json({ success: true, message: 'Đăng ký thành công! Đang chờ phê duyệt.' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -88,7 +115,6 @@ app.post('/api/volunteers/activity', async (req, res) => {
   try {
     const { fullName, mssv, content, date } = req.body;
     
-    // Tìm sinh viên đã được phê duyệt
     const volunteer = await Volunteer.findOne({ 
       mssv: mssv.trim().toUpperCase(), 
       fullName: { $regex: new RegExp(`^${fullName.trim()}$`, 'i') },
@@ -99,11 +125,9 @@ app.post('/api/volunteers/activity', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy TNV hoặc tài khoản chưa được phê duyệt!' });
     }
 
-    // Kiểm tra xem trong ngày này TNV đã từng ghi nhận buổi nào chưa
     const existingActivityIndex = volunteer.activities.findIndex(act => act.date === date);
 
     if (existingActivityIndex !== -1) {
-      // Nếu đã có buổi trong ngày này -> Tiến hành sửa/cập nhật nội dung buổi đó
       volunteer.activities[existingActivityIndex].content = content.trim();
       await volunteer.save();
       return res.json({ 
@@ -111,7 +135,6 @@ app.post('/api/volunteers/activity', async (req, res) => {
         message: 'Bạn đã có ghi nhận trong ngày này! Hệ thống đã tự động cập nhật/sửa lại tên buổi tình nguyện cho bạn.' 
       });
     } else {
-      // Nếu chưa có buổi nào trong ngày -> Thêm buổi mới
       volunteer.activities.push({ content: content.trim(), date });
       await volunteer.save();
       return res.json({ success: true, message: 'Ghi nhận buổi tình nguyện thành công!' });
@@ -121,48 +144,49 @@ app.post('/api/volunteers/activity', async (req, res) => {
   }
 });
 
-// Form 3: Admin cập nhật Vi phạm / Ghi chú / Thành tích (Tên trùng thông minh)
-app.post('/api/volunteers/admin-update', verifyAdmin, async (req, res) => {
+// Form 3: Cập nhật Vi phạm / Ghi chú / Thành tích (Leader chỉ được thao tác thành viên team mình)
+app.post('/api/volunteers/admin-update', verifyAuth, async (req, res) => {
   try {
     const { mssv, fullName, updateType, valueData } = req.body;
     let query = { status: 'approved' };
+
+    // Nếu là leader, bắt buộc chỉ được thao tác với thành viên thuộc team mình
+    if (req.userRole === 'leader') {
+      query.team = req.userTeam;
+    }
 
     if (!fullName && !mssv) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập Họ tên hoặc MSSV!' });
     }
 
-    // Nếu nhập MSSV -> Ưu tiên tìm theo MSSV
     if (mssv && mssv.trim()) {
       query.mssv = mssv.trim().toUpperCase();
     } else if (fullName && fullName.trim()) {
-      // Tìm danh sách theo tên
-      const matches = await Volunteer.find({
-        fullName: { $regex: new RegExp(`^${fullName.trim()}$`, 'i') },
-        status: 'approved'
-      });
+      query.fullName = { $regex: new RegExp(`^${fullName.trim()}$`, 'i') };
+      const matches = await Volunteer.find(query);
 
       if (matches.length === 0) {
-        return res.status(404).json({ success: false, message: 'Không tìm thấy TNV phù hợp!' });
+        return res.status(404).json({ success: false, message: 'Không tìm thấy TNV phù hợp trong phạm vi quản lý!' });
       }
       if (matches.length > 1) {
         return res.status(400).json({ 
           success: false, 
           requireMssv: true,
-          message: `Phát hiện ${matches.length} sinh viên trùng tên "${fullName}". Vui lòng nhập thêm MSSV để xác định chính xác!` 
+          message: `Phát hiện ${matches.length} sinh viên trùng tên "${fullName}". Vui lòng nhập thêm MSSV!` 
         });
       }
       query._id = matches[0]._id;
+      delete query.fullName;
     }
 
     const volunteer = await Volunteer.findOne(query);
     if (!volunteer) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin TNV!' });
+      return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin TNV hoặc không thuộc quyền quản lý!' });
     }
 
     if (updateType === 'fault') {
       volunteer.faults.push({ fault: valueData.fault, date: valueData.date });
     } else if (updateType === 'note') {
-      // Lưu ghi chú theo mảng bullet point
       if (typeof volunteer.notes === 'undefined') volunteer.notes = [];
       volunteer.notes.push({ text: valueData.generalNote.trim(), createdAt: new Date() });
     } else if (updateType === 'achievement') {
@@ -221,11 +245,25 @@ app.post('/api/volunteers/search', async (req, res) => {
   }
 });
 
-// --- API DASHBOARD ADMIN ---
+// --- API DASHBOARD ADMIN & LEADER ---
 
-app.post('/api/admin/volunteers', verifyAdmin, async (req, res) => {
+app.post('/api/admin/volunteers', verifyAuth, async (req, res) => {
   try {
-    const list = await Volunteer.find().sort({ createdAt: -1 });
+    let query = {};
+    if (req.userRole === 'leader') {
+      query.team = req.userTeam;
+    }
+
+    const list = await Volunteer.find(query).sort({ createdAt: -1 });
+    
+    // Tính tổng số buổi họp của toàn đội để làm chuẩn tính phần trăm
+    const allVolunteers = await Volunteer.find({});
+    let meetingDatesSet = new Set();
+    allVolunteers.forEach(v => {
+      (v.attendance || []).forEach(att => meetingDatesSet.add(att.date));
+    });
+    const totalMeetingsInTerm = meetingDatesSet.size || 1;
+
     const processed = list.map(v => {
       let obj = v.toObject();
       const groupMap = {};
@@ -236,19 +274,38 @@ app.post('/api/admin/volunteers', verifyAdmin, async (req, res) => {
         groupMap[key].items.push(act);
       });
       obj.activitySummary = Object.values(groupMap);
+
+      // Tính phần trăm buổi họp
+      const attendedCount = (obj.attendance || []).filter(a => a.present).length;
+      obj.meetingPercentage = Math.round((attendedCount / totalMeetingsInTerm) * 100);
+
       return obj;
     });
-    res.json({ success: true, data: processed });
+
+    res.json({ 
+      success: true, 
+      role: req.userRole, 
+      userTeam: req.userTeam || null,
+      data: processed 
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-app.post('/api/admin/approve', verifyAdmin, async (req, res) => {
+app.post('/api/admin/approve', verifyAuth, async (req, res) => {
   try {
     const { id, action } = req.body;
+    const volunteer = await Volunteer.findById(id);
+    if (!volunteer) return res.status(404).json({ success: false, message: 'Không tìm thấy TNV!' });
+
+    if (req.userRole === 'leader' && volunteer.team !== req.userTeam) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền duyệt TNV của team khác!' });
+    }
+
     if (action === 'approve') {
-      await Volunteer.findByIdAndUpdate(id, { status: 'approved' });
+      volunteer.status = 'approved';
+      await volunteer.save();
       res.json({ success: true, message: 'Đã phê duyệt tình nguyện viên!' });
     } else if (action === 'reject') {
       await Volunteer.findByIdAndDelete(id);
@@ -259,16 +316,53 @@ app.post('/api/admin/approve', verifyAdmin, async (req, res) => {
   }
 });
 
+// API Điểm danh họp đội
+app.post('/api/admin/attendance', verifyAuth, async (req, res) => {
+  try {
+    const { date, attendanceList } = req.body;
+    if (!date || !attendanceList) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin ngày hoặc danh sách điểm danh!' });
+    }
+
+    for (let item of attendanceList) {
+      let query = { mssv: item.mssv.trim().toUpperCase() };
+      if (req.userRole === 'leader') query.team = req.userTeam;
+
+      let volunteer = await Volunteer.findOne(query);
+      if (volunteer) {
+        let attIndex = volunteer.attendance.findIndex(a => a.date === date);
+        if (attIndex !== -1) {
+          volunteer.attendance[attIndex].present = item.present;
+        } else {
+          volunteer.attendance.push({ date, present: item.present });
+        }
+        await volunteer.save();
+      }
+    }
+
+    res.json({ success: true, message: 'Điểm danh họp đội thành công!' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Xóa lẻ mục (hoạt động, lỗi, chiến dịch, GHI CHÚ BULLET, GHI CHÚ ĐƠN CŨ)
-app.post('/api/admin/delete-item', verifyAdmin, async (req, res) => {
+app.post('/api/admin/delete-item', verifyAuth, async (req, res) => {
   try {
     const { volunteerId, itemType, itemId } = req.body;
+    const volunteer = await Volunteer.findById(volunteerId);
+    if (!volunteer) return res.status(404).json({ success: false, message: 'Không tìm thấy TNV!' });
+
+    if (req.userRole === 'leader' && volunteer.team !== req.userTeam) {
+      return res.status(403).json({ success: false, message: 'Bạn không có quyền chỉnh sửa thành viên team khác!' });
+    }
+
     let updateQuery = {};
     if (itemType === 'activity') updateQuery = { $pull: { activities: { _id: itemId } } };
     if (itemType === 'fault') updateQuery = { $pull: { faults: { _id: itemId } } };
     if (itemType === 'campaign') updateQuery = { $pull: { campaigns: { _id: itemId } } };
     if (itemType === 'note') updateQuery = { $pull: { notes: { _id: itemId } } };
-    if (itemType === 'generalNote') updateQuery = { $set: { generalNote: '' } }; // Thêm dòng này để xóa được ghi chú chuỗi cũ
+    if (itemType === 'generalNote') updateQuery = { $set: { generalNote: '' } };
 
     await Volunteer.findByIdAndUpdate(volunteerId, updateQuery);
     res.json({ success: true, message: 'Đã xóa mục thành công!' });
