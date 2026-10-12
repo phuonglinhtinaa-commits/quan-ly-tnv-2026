@@ -35,8 +35,13 @@
         <div class="card-body">
           <div class="mb-3">
             <label class="form-label fw-bold text-danger">1. Chọn ngày họp đội:</label>
-            <input type="date" id="meetingDate" class="form-control form-control-lg" onchange="loadAttendanceForDate()">
-            <div class="form-text">💡 Bạn có thể chọn lại ngày cũ để bổ sung/điểm danh bù cho các bạn đến muộn.</div>
+            <div class="input-group">
+              <input type="date" id="meetingDate" class="form-control form-control-lg" onchange="loadAttendanceForDate()">
+              <button class="btn btn-outline-danger px-3" onclick="deleteAttendanceDate()" title="Xóa toàn bộ điểm danh của ngày này">
+                <i class="fa-solid fa-trash-can me-1"></i> Xóa ngày này
+              </button>
+            </div>
+            <div class="form-text">💡 Bạn có thể chọn lại ngày cũ để bổ sung/điểm danh bù, hoặc bấm <strong>"Xóa ngày này"</strong> nếu lỡ nhập nhầm ngày (ví dụ 12/10 thành 8/10).</div>
           </div>
 
           <div class="mb-3">
@@ -120,9 +125,7 @@
       }
 
       tbody.innerHTML = currentTeamMembers.map(v => {
-        // Kiểm tra xem trong ngày này TNV đã có lịch sử điểm danh chưa
         const attRecord = (v.attendance || []).find(a => a.date === selectedDate);
-        // Nếu đã có điểm danh trước đó -> Lấy đúng trạng thái present. Nếu chưa điểm danh ngày này -> Mặc định checked
         const isPresent = attRecord ? attRecord.present : true;
 
         return `
@@ -159,22 +162,52 @@
         if (data.success) {
           alertDiv.className = 'alert alert-success';
           alertDiv.textContent = '✅ Đã lưu và cập nhật điểm danh thành công! Dữ liệu đã chảy về Dashboard.';
-          // Cập nhật lại dữ liệu local
-          currentTeamMembers.forEach(v => {
-            const item = attendanceList.find(a => a.mssv === v.mssv);
-            if (item) {
-              if (!v.attendance) v.attendance = [];
-              let attIndex = v.attendance.findIndex(a => a.date === date);
-              if (attIndex !== -1) v.attendance[attIndex].present = item.present;
-              else v.attendance.push({ date, present: item.present });
-            }
+          
+          // Tải lại dữ liệu từ server để đồng bộ cache local
+          const resRefresh = await fetch('/api/admin/volunteers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-password': currentPassword }
           });
+          const resultRefresh = await resRefresh.json();
+          if (resultRefresh.success) {
+            currentTeamMembers = (resultRefresh.data || []).filter(v => v.status === 'approved');
+          }
         } else {
           alertDiv.className = 'alert alert-danger';
           alertDiv.textContent = data.message;
         }
       } catch (err) {
         alert('Lỗi kết nối khi gửi điểm danh.');
+      }
+    }
+
+    // Hàm gọi API xóa toàn bộ dữ liệu điểm danh của ngày được chọn
+    async function deleteAttendanceDate() {
+      const date = document.getElementById('meetingDate').value;
+      if (!date) { alert('Vui lòng chọn ngày cần xóa!'); return; }
+      if (!confirm(`Bạn có chắc chắn muốn XÓA toàn bộ dữ liệu điểm danh của ngày ${date} không?`)) return;
+
+      try {
+        const res = await fetch('/api/admin/delete-attendance-date', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': currentPassword },
+          body: JSON.stringify({ date })
+        });
+        const data = await res.json();
+        const alertDiv = document.getElementById('alertMsg');
+        
+        if (data.success) {
+          alertDiv.className = 'alert alert-warning';
+          alertDiv.textContent = `🗑️ ${data.message}`;
+          
+          // Tải lại danh sách sau khi xóa
+          loadTeamMembers();
+        } else {
+          alertDiv.className = 'alert alert-danger';
+          alertDiv.textContent = data.message;
+        }
+      } catch (err) {
+        alert('Lỗi kết nối khi xóa ngày điểm danh.');
       }
     }
 
