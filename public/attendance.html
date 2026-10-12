@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Form 6: Điểm Danh Họp Đội</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-light">
+  <div class="container py-4" style="max-width: 650px;">
+    <a href="index.html" class="btn btn-sm btn-secondary mb-3">&larr; Quay lại Trang chủ</a>
+
+    <!-- Thẻ Đăng nhập Leader -->
+    <div id="authCard" class="card shadow-sm mb-4">
+      <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="fa-solid fa-user-shield me-2"></i>Form 6: Điểm Danh Họp Đội (Dành cho Leader)</h5>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label fw-bold">Nhập mật khẩu Leader / Admin:</label>
+          <input type="password" class="form-control" id="leaderPass" placeholder="Nhập mật khẩu team của bạn...">
+        </div>
+        <button class="btn btn-success w-100" onclick="loadTeamMembers()">Đăng nhập & Lấy danh sách Team</button>
+      </div>
+    </div>
+
+    <!-- Giao diện Điểm danh -->
+    <div id="attendanceContent" style="display: none;">
+      <div class="card shadow-sm border-success">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center py-2">
+          <span class="fw-bold" id="teamTitle">📋 Danh sách điểm danh</span>
+          <button class="btn btn-sm btn-light text-dark" onclick="logoutLeader()">Đổi Mật Khẩu / Team</button>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold text-danger">1. Chọn ngày họp đội:</label>
+            <input type="date" id="meetingDate" class="form-control form-control-lg" onchange="loadAttendanceForDate()">
+            <div class="form-text">💡 Bạn có thể chọn lại ngày cũ để bổ sung/điểm danh bù cho các bạn đến muộn.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold text-primary">2. Danh sách thành viên (Tick = Có mặt, Bỏ tick = Vắng):</label>
+            <div class="table-responsive border rounded" style="max-height: 400px; overflow-y: auto;">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th style="width: 70px;" class="text-center">Có mặt</th>
+                    <th>MSSV</th>
+                    <th>Họ và tên</th>
+                  </tr>
+                </thead>
+                <tbody id="attendanceTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <button class="btn btn-success btn-lg w-100 mt-2" onclick="saveAttendance()">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Lưu / Cập nhật Điểm danh
+          </button>
+          <div id="alertMsg" class="mt-3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let currentTeamMembers = [];
+    let currentPassword = '';
+
+    document.getElementById('meetingDate').valueAsDate = new Date();
+
+    async function loadTeamMembers() {
+      const password = document.getElementById('leaderPass').value.trim();
+      if (!password) { alert('Vui lòng nhập mật khẩu!'); return; }
+
+      try {
+        const res = await fetch('/api/admin/volunteers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': password }
+        });
+        const result = await res.json();
+
+        if (!result.success) {
+          alert(result.message);
+          return;
+        }
+
+        currentPassword = password;
+        sessionStorage.setItem('leaderPass', password);
+        document.getElementById('authCard').style.display = 'none';
+        document.getElementById('attendanceContent').style.display = 'block';
+
+        const roleText = result.role === 'admin' ? 'Quản trị viên (Toàn đội)' : result.userTeam;
+        document.getElementById('teamTitle').textContent = `📋 Điểm danh: ${roleText}`;
+
+        // Lọc danh sách đã phê duyệt và sắp xếp A-Z
+        currentTeamMembers = (result.data || [])
+          .filter(v => v.status === 'approved')
+          .sort((a, b) => {
+            const nameA = a.fullName.trim().split(' ').pop();
+            const nameB = b.fullName.trim().split(' ').pop();
+            return nameA.localeCompare(nameB, 'vi');
+          });
+
+        loadAttendanceForDate();
+      } catch (err) {
+        alert('Lỗi kết nối máy chủ: ' + err.message);
+      }
+    }
+
+    function loadAttendanceForDate() {
+      const selectedDate = document.getElementById('meetingDate').value;
+      const tbody = document.getElementById('attendanceTableBody');
+
+      if (currentTeamMembers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Không có thành viên nào trong team</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = currentTeamMembers.map(v => {
+        // Kiểm tra xem trong ngày này TNV đã có lịch sử điểm danh chưa
+        const attRecord = (v.attendance || []).find(a => a.date === selectedDate);
+        // Nếu đã có điểm danh trước đó -> Lấy đúng trạng thái present. Nếu chưa điểm danh ngày này -> Mặc định checked
+        const isPresent = attRecord ? attRecord.present : true;
+
+        return `
+          <tr>
+            <td class="text-center">
+              <input type="checkbox" class="form-check-input att-checkbox" value="${v.mssv}" ${isPresent ? 'checked' : ''} style="width: 24px; height: 24px;">
+            </td>
+            <td class="fw-bold">${v.mssv}</td>
+            <td class="fw-bold text-primary">${v.fullName} <span class="badge bg-secondary ms-1">${v.team}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function saveAttendance() {
+      const date = document.getElementById('meetingDate').value;
+      if (!date) { alert('Vui lòng chọn ngày họp!'); return; }
+
+      const checkboxes = document.querySelectorAll('.att-checkbox');
+      let attendanceList = [];
+      checkboxes.forEach(cb => {
+        attendanceList.push({ mssv: cb.value, present: cb.checked });
+      });
+
+      try {
+        const res = await fetch('/api/admin/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': currentPassword },
+          body: JSON.stringify({ date, attendanceList })
+        });
+        const data = await res.json();
+        const alertDiv = document.getElementById('alertMsg');
+        
+        if (data.success) {
+          alertDiv.className = 'alert alert-success';
+          alertDiv.textContent = '✅ Đã lưu và cập nhật điểm danh thành công! Dữ liệu đã chảy về Dashboard.';
+          // Cập nhật lại dữ liệu local
+          currentTeamMembers.forEach(v => {
+            const item = attendanceList.find(a => a.mssv === v.mssv);
+            if (item) {
+              if (!v.attendance) v.attendance = [];
+              let attIndex = v.attendance.findIndex(a => a.date === date);
+              if (attIndex !== -1) v.attendance[attIndex].present = item.present;
+              else v.attendance.push({ date, present: item.present });
+            }
+          });
+        } else {
+          alertDiv.className = 'alert alert-danger';
+          alertDiv.textContent = data.message;
+        }
+      } catch (err) {
+        alert('Lỗi kết nối khi gửi điểm danh.');
+      }
+    }
+
+    function logoutLeader() {
+      sessionStorage.removeItem('leaderPass');
+      document.getElementById('authCard').style.display = 'block';
+      document.getElementById('attendanceContent').style.display = 'none';
+      document.getElementById('leaderPass').value = '';
+    }
+
+    // Tự động khôi phục phiên nếu đã nhập mật khẩu trước đó
+    window.onload = () => {
+      const savedPass = sessionStorage.getItem('leaderPass');
+      if (savedPass) {
+        document.getElementById('leaderPass').value = savedPass;
+        loadTeamMembers();
+      }
+    };
+  </script>
+</body>
+</html>
