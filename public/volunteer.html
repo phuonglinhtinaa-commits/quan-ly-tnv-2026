@@ -16,8 +16,28 @@
       <div class="card-header bg-primary text-white"><h5 class="mb-0">Form 1: Khởi tạo Tình nguyện viên mới</h5></div>
       <div class="card-body">
         <form id="registerForm">
-          <div class="mb-3"><label class="form-label">Họ và tên</label><input type="text" class="form-control" id="regName" required placeholder="Nguyễn Văn A"></div>
-          <div class="mb-3"><label class="form-label">Mã số sinh viên (MSSV)</label><input type="text" class="form-control" id="regMssv" required placeholder="B22DCCN123"></div>
+          <div class="mb-3">
+            <label class="form-label">Họ và tên</label>
+            <input type="text" class="form-control" id="regName" required placeholder="Nguyễn Văn A">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Mã số sinh viên (MSSV)</label>
+            <input type="text" class="form-control" id="regMssv" required placeholder="B22DCCN123">
+          </div>
+          <!-- Thêm trường chọn Team cho TNV -->
+          <div class="mb-3">
+            <label class="form-label">Thuộc Team quản lý</label>
+            <select class="form-select" id="regTeam" required>
+              <option value="">-- Chọn Team của bạn --</option>
+              <option value="Team 1">Team 1</option>
+              <option value="Team 2">Team 2</option>
+              <option value="Team 3">Team 3</option>
+              <option value="Team 4">Team 4</option>
+              <option value="Team 5">Team 5</option>
+              <option value="Team 6">Team 6</option>
+              <option value="Team 7">Team 7</option>
+            </select>
+          </div>
           <button type="submit" class="btn btn-primary w-100">Gửi yêu cầu đăng ký</button>
         </form>
         <div id="regAlert" class="mt-3"></div>
@@ -51,7 +71,11 @@
       const res = await fetch('/api/volunteers/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName: document.getElementById('regName').value, mssv: document.getElementById('regMssv').value })
+        body: JSON.stringify({ 
+          fullName: document.getElementById('regName').value, 
+          mssv: document.getElementById('regMssv').value,
+          team: document.getElementById('regTeam').value
+        })
       });
       const data = await res.json();
       const alertDiv = document.getElementById('regAlert');
