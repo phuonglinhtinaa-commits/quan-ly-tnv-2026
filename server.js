@@ -150,7 +150,6 @@ app.post('/api/volunteers/admin-update', verifyAuth, async (req, res) => {
     const { mssv, fullName, updateType, valueData } = req.body;
     let query = { status: 'approved' };
 
-    // Nếu là leader, bắt buộc chỉ được thao tác với thành viên thuộc team mình
     if (req.userRole === 'leader') {
       query.team = req.userTeam;
     }
@@ -341,6 +340,30 @@ app.post('/api/admin/attendance', verifyAuth, async (req, res) => {
     }
 
     res.json({ success: true, message: 'Điểm danh họp đội thành công!' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// API MỚI: Xóa toàn bộ dữ liệu điểm danh của một ngày cụ thể (Dành cho trường hợp Leader nhập nhầm ngày)
+app.post('/api/admin/delete-attendance-date', verifyAuth, async (req, res) => {
+  try {
+    const { date } = req.body;
+    if (!date) {
+      return res.status(400).json({ success: false, message: 'Thiếu thông tin ngày cần xóa!' });
+    }
+
+    let query = {};
+    if (req.userRole === 'leader') {
+      query.team = req.userTeam;
+    }
+
+    // Sử dụng toán tử $pull để loại bỏ mảng attendance có ngày khớp
+    await Volunteer.updateMany(query, {
+      $pull: { attendance: { date: date } }
+    });
+
+    res.json({ success: true, message: `Đã xóa thành công dữ liệu điểm danh của ngày ${date}!` });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
