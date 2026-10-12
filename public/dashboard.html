@@ -73,22 +73,23 @@
         <div class="card-header bg-danger text-white fw-bold">
           <div class="row align-items-center g-2">
             <div class="col-md-3">
-              <span>📊 Bảng Tổng Kết (Sắp xếp A-Z)</span>
+              <span id="tableTitleName">📊 Bảng Tổng Kết (Sắp xếp A-Z)</span>
             </div>
             <div class="col-md-9">
               <div class="row g-2 align-items-center justify-content-end">
                 <!-- Chế độ xem theo Team (Chỉ hiện với Admin) -->
-                <div class="col-md-3" id="adminViewModeContainer" style="display:none;">
+                <div class="col-md-4" id="adminViewModeContainer" style="display:none;">
                   <select id="adminViewMode" class="form-select form-select-sm" onchange="filterTable()">
                     <option value="all">🌐 Tổng kết chung (Toàn đội A-Z)</option>
                     <option value="byTeam">👥 Xếp theo từng Team (A-Z)</option>
+                    <option value="teamSummary">📈 Tổng kết gọn theo các Team</option>
                   </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-3" id="searchContainer">
                   <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Tìm Tên hoặc MSSV..." onkeyup="filterTable()">
                 </div>
                 <!-- 3 Nút bộ lọc + Xem xét + Chốt -->
-                <div class="col-md-6 d-flex gap-1 flex-wrap justify-content-end">
+                <div class="col-md-5 d-flex gap-1 flex-wrap justify-content-end" id="filterButtonsContainer">
                   <button class="btn btn-sm btn-light text-dark" id="btnFilter1" onclick="applyFinalFilter(1)">🎯 Lọc 1 (TN>=4, Họp>=60%)</button>
                   <button class="btn btn-sm btn-light text-dark" id="btnFilter2" onclick="applyFinalFilter(2)">🎯 Lọc 2 (TN>=1, CĐ)</button>
                   <button class="btn btn-sm btn-light text-dark" id="btnFilter3" onclick="applyFinalFilter(3)">🎯 Lọc 3 (TN>=1, Ban)</button>
@@ -103,7 +104,7 @@
         
         <div class="card-body table-responsive">
           <table class="table table-bordered table-hover align-middle mb-0 table-custom" id="summaryTable">
-            <thead class="table-dark">
+            <thead class="table-dark" id="tableHeaderContainer">
               <tr>
                 <th rowspan="2" style="width: 40px;">Đạt</th>
                 <th rowspan="2" style="width: 50px;">STT</th>
@@ -253,8 +254,26 @@
     }
 
     function filterTable() {
-      const keyword = document.getElementById('searchInput').value.toLowerCase();
       const viewMode = currentUserRole === 'admin' ? document.getElementById('adminViewMode').value : 'all';
+      
+      const searchContainer = document.getElementById('searchContainer');
+      const filterButtonsContainer = document.getElementById('filterButtonsContainer');
+      const tableTitleName = document.getElementById('tableTitleName');
+
+      // Xử lý riêng cho chế độ xem tổng kết gọn theo các team
+      if (viewMode === 'teamSummary') {
+        if(searchContainer) searchContainer.style.display = 'none';
+        if(filterButtonsContainer) filterButtonsContainer.style.display = 'none';
+        if(tableTitleName) tableTitleName.textContent = '📈 Tổng Kết Rút Gọn Theo Các Team';
+        renderTeamSummaryTable();
+        return;
+      } else {
+        if(searchContainer) searchContainer.style.display = 'block';
+        if(filterButtonsContainer) filterButtonsContainer.style.display = 'flex';
+        if(tableTitleName) tableTitleName.textContent = '📊 Bảng Tổng Kết (Sắp xếp A-Z)';
+      }
+
+      const keyword = document.getElementById('searchInput').value.toLowerCase();
 
       const filtered = cachedData.filter(v => {
         if (v.status !== 'approved') return false;
@@ -289,7 +308,86 @@
       renderDashboard(filtered, viewMode);
     }
 
+    // Render bảng tổng kết gọn theo từng Team
+    function renderTeamSummaryTable() {
+      const headerContainer = document.getElementById('tableHeaderContainer');
+      headerContainer.innerHTML = `
+        <tr class="table-dark text-center">
+          <th style="width: 60px;">STT</th>
+          <th style="width: 150px;">Tên Team</th>
+          <th style="width: 150px;">Tổng số TNV</th>
+          <th style="width: 220px;">Tổng số lượt hỗ trợ (Buổi)</th>
+          <th style="width: 180px;">Tổng số lỗi vi phạm</th>
+          <th style="width: 200px;">Tỷ lệ họp đội trung bình</th>
+        </tr>
+      `;
+
+      const approvedList = cachedData.filter(v => v.status === 'approved');
+      const teams = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5', 'Team 6', 'Team 7'];
+      
+      let summaryHtml = '';
+      teams.forEach((teamName, index) => {
+        const members = approvedList.filter(v => v.team === teamName);
+        
+        let totalTeamSupports = 0;
+        let totalTeamFaults = 0;
+        let totalMeetingPct = 0;
+
+        members.forEach(m => {
+          let memberSessions = 0;
+          (m.activitySummary || []).forEach(g => memberSessions += g.count);
+          totalTeamSupports += memberSessions;
+
+          totalTeamFaults += (m.faults ? m.faults.length : 0);
+          totalMeetingPct += (m.meetingPercentage || 0);
+        });
+
+        const avgMeetingPct = members.length > 0 ? Math.round(totalMeetingPct / members.length) : 0;
+
+        summaryHtml += `
+          <tr>
+            <td class="fw-bold">${index + 1}</td>
+            <td><span class="badge bg-secondary fs-6">${teamName}</span></td>
+            <td class="fw-bold text-primary">${members.length} thành viên</td>
+            <td><span class="badge bg-primary fs-6">${totalTeamSupports} lượt</span></td>
+            <td><span class="badge bg-danger fs-6">${totalTeamFaults} lỗi</span></td>
+            <td><span class="badge bg-success fs-6">${avgMeetingPct}%</span></td>
+          </tr>
+        `;
+      });
+
+      document.getElementById('summaryTableBody').innerHTML = summaryHtml;
+    }
+
     function renderDashboard(data, viewMode) {
+      // Khôi phục lại tiêu đề bảng đầy đủ ban đầu
+      const headerContainer = document.getElementById('tableHeaderContainer');
+      headerContainer.innerHTML = `
+        <tr>
+          <th rowspan="2" style="width: 40px;">Đạt</th>
+          <th rowspan="2" style="width: 50px;">STT</th>
+          <th rowspan="2" style="width: 90px;">Team</th>
+          <th rowspan="2" style="min-width: 150px;">Tên TNV</th>
+          <th rowspan="2" style="min-width: 110px;">MSSV</th>
+          <th colspan="4" class="bg-primary text-white">Thành tích & Họp đội</th>
+          <th colspan="3" class="bg-warning text-dark">Vi phạm kỷ luật</th>
+          <th colspan="3" class="bg-info text-dark">Chiến dịch lớn</th>
+          <th rowspan="2" style="min-width: 200px;">Ghi chú chung</th>
+        </tr>
+        <tr>
+          <th class="bg-primary text-white" style="min-width: 180px;">Nội dung công việc</th>
+          <th class="bg-primary text-white" style="min-width: 110px;">Ngày</th>
+          <th class="bg-primary text-white" style="min-width: 110px;">Tổng số buổi</th>
+          <th class="bg-primary text-white" style="min-width: 100px;">Họp đội (%)</th>
+          <th class="bg-warning text-dark" style="min-width: 160px;">Lỗi vi phạm</th>
+          <th class="bg-warning text-dark" style="min-width: 110px;">Ngày</th>
+          <th class="bg-warning text-dark" style="min-width: 110px;">Tổng số lỗi</th>
+          <th class="bg-info text-dark" style="min-width: 160px;">Tên chiến dịch</th>
+          <th class="bg-info text-dark" style="min-width: 160px;">Thành tích nổi bật</th>
+          <th class="bg-info text-dark" style="min-width: 120px;">Tổng số chiến dịch</th>
+        </tr>
+      `;
+
       const pendingList = cachedData.filter(v => v.status === 'pending');
       document.getElementById('pendingCount').textContent = pendingList.length;
       document.getElementById('pendingTableBody').innerHTML = pendingList.length ? pendingList.map(v => `
@@ -486,6 +584,12 @@
       a.download = 'Danh_Sach_CHOT_DAT_Tinh_Nguyen_2026_1.xls';
       a.click();
     }
+
+    window.onload = () => {
+      if (sessionStorage.getItem('adminPass')) {
+        loadDashboardData();
+      }
+    };
   </script>
 </body>
 </html>
